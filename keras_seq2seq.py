@@ -106,6 +106,9 @@ class Seq2Seq:
                 self.text_onehot_data = text_onehot_lists[id-1]
             elif i == 1:
                 self.text_onehot_data = np.stack([self.text_onehot_data,text_onehot_lists[id-1]],axis=0)
+            elif i == (data_size-1):
+                self.text_onehot_data = np.append(self.text_onehot_data, np.reshape(text_onehot_lists[id-1],(1,24,942)),axis=0)
+                break
             else:
                 self.text_onehot_data = np.append(self.text_onehot_data, np.reshape(text_onehot_lists[id-1],(1,24,942)),axis=0)
 
@@ -119,7 +122,7 @@ class Seq2Seq:
 
 if __name__ == '__main__':
 
-    N = 4095
+    N = 200
     N_train = int(N * 0.9)
     N_validation = N - N_train
     ve = VocabExtractor()
@@ -127,8 +130,8 @@ if __name__ == '__main__':
     o2t = One2Text(id2word_dic)
     seq2seq = Seq2Seq()
     X, Y = seq2seq.make_data(N,sorted(glob.glob("./data/utt*")),text_onehot_lists)
-    X_train, X_validation, Y_train, Y_validation = \
-        train_test_split(X, Y, train_size=N_train)
+    print(len(X),len(Y))
+    X_train, X_validation, Y_train, Y_validation = train_test_split(X, Y, train_size=N_train)
 
 
     # モデル設定
@@ -154,8 +157,8 @@ if __name__ == '__main__':
     '''
     モデル学習
     '''
-    epochs = 200
-    batch_size = 200
+    epochs = 5
+    batch_size = 2
 
     # 1. TensorBoardコールバックを作成する
     from keras.callbacks import TensorBoard
