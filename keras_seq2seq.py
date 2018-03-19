@@ -103,21 +103,18 @@ class Seq2Seq:
             id, post_vec = pr.read_data(file)
             self.post_data.append(post_vec)
             if i == 0:
-                self.text_onehot_data = text_onehot_lists[id]
+                self.text_onehot_data = text_onehot_lists[id-1]
             elif i == 1:
-                self.text_onehot_data = np.stack([self.text_onehot_data,text_onehot_lists[id]],axis=0)
-            elif i == data_size-1:
-                self.text_onehot_data = np.append(self.text_onehot_data, np.reshape(text_onehot_lists[id],(1,24,942)),axis=0)
-                break
+                self.text_onehot_data = np.stack([self.text_onehot_data,text_onehot_lists[id-1]],axis=0)
             else:
-                self.text_onehot_data = np.append(self.text_onehot_data, np.reshape(text_onehot_lists[id],(1,24,942)),axis=0)
+                self.text_onehot_data = np.append(self.text_onehot_data, np.reshape(text_onehot_lists[id-1],(1,24,942)),axis=0)
 
         self.max_len = max([len(i) for i in self.post_data])
         for i, post_vec in enumerate(self.post_data):
             pad_vec = [[0 for i in range(2000)] for i in range(self.max_len-len(post_vec))]
             self.post_data[i] += pad_vec
 
-        return np.array(self.post_data).astype(np.float64), self.text_onehot_data
+        return np.array(self.post_data).astype(np.float32), self.text_onehot_data
 
 
 if __name__ == '__main__':
