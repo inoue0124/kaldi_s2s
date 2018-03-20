@@ -54,7 +54,7 @@ class VocabExtractor:
                 for i in self.mecab.parse(line).splitlines():
                     word = jaconv.kata2hira(i.split(',')[-1])
                     print (word)
-                    if (word not in self.word2id_dic.keys()):
+                    if (word not in self.word2id_dic.keys()) and (word != '*'):
                         self.word2id_dic[word] = len(self.word2id_dic)
                         self.id2word_dic[len(self.id2word_dic)] = word
             self.word2id_dic['PAD'] = len(self.word2id_dic)
@@ -65,7 +65,8 @@ class VocabExtractor:
                 ids = []
                 for i in self.mecab.parse(line).splitlines():
                     word = jaconv.kata2hira(i.split(',')[-1])
-                    ids.append(self.word2id_dic[word])
+                    if (word != '*'):
+                        ids.append(self.word2id_dic[word])
                 self.text_onehot_lists.append(ids)
 
             self.text_max_len = max([len(i) for i in self.text_onehot_lists])
@@ -110,10 +111,10 @@ class DataArranger:
             elif i == 1:
                 self.text_onehot_data = np.stack([self.text_onehot_data,text_onehot_lists[id-1]],axis=0)
             elif i == (data_size-1):
-                self.text_onehot_data = np.append(self.text_onehot_data, np.reshape(text_onehot_lists[id-1],(1,24,875)),axis=0)
+                self.text_onehot_data = np.append(self.text_onehot_data, np.reshape(text_onehot_lists[id-1],(1,24,874)),axis=0)
                 break
             else:
-                self.text_onehot_data = np.append(self.text_onehot_data, np.reshape(text_onehot_lists[id-1],(1,24,875)),axis=0)
+                self.text_onehot_data = np.append(self.text_onehot_data, np.reshape(text_onehot_lists[id-1],(1,24,874)),axis=0)
 
         self.post_max_len = max([len(i) for i in self.post_data])
         for i, post_vec in enumerate(self.post_data):
