@@ -18,10 +18,9 @@ git clone https://github.com/inoue0124/kaldi_s2s.git
 cd kaldi_s2s
 ```
 ###  Preparation of training data
-The data dir which contains phonem posterior vectors written in text file format is neccessary.  
-Decode utterances and save posterior vectors by using Kaldi.   
-This program requires text files that posterior vectors are written one by one.
-
+t is necessary to place the phoneme posterior vector data in text format in the data directory.  
+Please calculate phoneme posterior by decoding speech files with kaldi.  
+It is assumed that one voice is stored in one file.  
 
 ### Run
 At first, rewirte the number of data, epoch, batch size (Written in keras_seq2seq.py)  
