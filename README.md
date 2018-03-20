@@ -1,75 +1,46 @@
 # kaldi_s2s
-This is a program of a seq2seq language model using Tensorflow and Keras.
-Input : Phoneme posterior vector extracted by Kaldi(A toolkit of automatic speech recognition).
-Output : Intended text
+This is a program of a seq2seq language model using Tensorflow and Keras.  
+Input : Phoneme posterior vector extracted by Kaldi(A toolkit of automatic speech recognition).  
+Output : Intended text  
 
 ## Description
+ASR (Automatic speech recognition) is one of the hottest study area, and many kind of approach has been proposed for a long time.  
+A basic model of ASR is a combination of acostic model and language model.   
+This program is a language model using seq2seq encoder-decoder, which converts a frame sequence of phoneme posterior vector into an intended text.  
 
 
 ## Usage
 ### Install
-At first, clone this repository to your computer.
+Clone this repository to your computer.
 
 ```sh
 git clone https://github.com/inoue0124/kaldi_s2s.git
 cd kaldi_s2s
 ```
+###  Preparation of training data
+The data dir which contains phonem posterior vectors written in text file format is neccessary.  
+Decode utterances and save posterior vectors by using Kaldi.   
+This program requires text files that posterior vectors are written one by one.
 
-Then, rewirte the number of data, epoch, batch size (Written in keras_seq2seq.py)
 
-After that, execute a below command,
+### Run
+At first, rewirte the number of data, epoch, batch size (Written in keras_seq2seq.py)  
+Then, execute a below command,
 
 ```sh
 python keras_seq2seq.py
 ```
 
-A log directory will be made and various files will be created in it.
+A log directory will be made and various files will be created in it.  
 if you want to check a learning history on tensorboard, do the command like
-
 ```sh
 tensorboard --logdir=./log/{time_stamp}
 ```
-and access here [http://127.0.0.1:6006/](http://127.0.0.1:6006/)
+and access here [http://127.0.0.1:6006/](http://127.0.0.1:6006/).  
 
 
-### Open
-特定のソフトで開くとき
+### Reference
+* [Kaldi](https://github.com/kaldi-asr/kaldi)
+* [Seq2seq](https://github.com/udacity/deep-learning/blob/master/seq2seq/sequence_to_sequence_implementation.ipynb)
+* [詳解 ディープラーニング](https://github.com/yusugomori/deeplearning-tensorflow-keras/tree/r1.4)
 
-### Settings
-環境変数など
-
-### Build
-コンパイルなど
-
-### Deploy
-![herokubutton](https://www.herokucdn.com/deploy/button.svg)  
-とかでもいい
-
-### Run
-実行
-
-### Check
-```sh
-firefox http://localhost:8080/my-project &
-```
-とか
-
-## Hints
-### Options
-コマンドのオプションとか
-
-### Distribute
-`*.zip`にするタスクとかあるなら
-
-### Examples Of Command
-コマンドの実行結果の例とか
-
-## Future Releases
-今後の方針
-
-## Contribution
-1. Fork it  
-2. Create your feature branch  
-3. Commit your changes  
-4. Push to the branch  
-5. Create new Pull Request 
