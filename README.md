@@ -18,7 +18,7 @@ git clone https://github.com/inoue0124/kaldi_s2s.git
 cd kaldi_s2s
 ```
 ###  Preparation of training data
-t is necessary to place the phoneme posterior vector data in text format in the data directory.  
+It is necessary to place the phoneme posterior vector data in text format in the data directory.  
 Please calculate phoneme posterior by decoding speech files with kaldi.  
 It is assumed that one voice is stored in one file.  
 
