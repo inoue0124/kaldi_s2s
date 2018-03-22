@@ -6,15 +6,16 @@ import os
 import pickle
 import jaconv
 import pathlib
+import sys
 from datetime import datetime
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
-from keras.models import Sequential
+from keras.models import Sequential,model_from_json
 from keras.layers.core import Dense, Activation, RepeatVector
 from keras.layers.recurrent import LSTM
 from keras.layers.wrappers import TimeDistributed
 from keras.optimizers import Adam
-from keras.callbacks import TensorBoard, CSVLogger
+from keras.callbacks import TensorBoard, CSVLogger, EarlyStopping
 from keras.utils import plot_model
 
 
@@ -57,70 +58,60 @@ class VocabExtractor:
                     if (word not in self.word2id_dic.keys()) and (word != '*'):
                         self.word2id_dic[word] = len(self.word2id_dic)
                         self.id2word_dic[len(self.id2word_dic)] = word
-            self.word2id_dic['PAD'] = len(self.word2id_dic)
-            self.id2word_dic[len(self.id2word_dic)] = 'PAD'
+            self.word2id_dic[' '] = len(self.word2id_dic)
+            self.id2word_dic[len(self.id2word_dic)] = ' '
 
         with open(file_name) as sentences: # 各テキストの単語にidを付与し，
             for line in sentences:         # id列をonehotシークエンスに変換
                 ids = []
                 for i in self.mecab.parse(line).splitlines():
                     word = jaconv.kata2hira(i.split(',')[-1])
-                    if (word != '*'):
+                    if word != '*':
                         ids.append(self.word2id_dic[word])
                 self.text_onehot_lists.append(ids)
 
             self.text_max_len = max([len(i) for i in self.text_onehot_lists])
             for id, id_list in enumerate(self.text_onehot_lists):
-                pad_list = [self.word2id_dic['PAD'] for i in range(self.text_max_len-len(id_list))]
+                pad_list = [self.word2id_dic[' '] for i in range(self.text_max_len-len(id_list))]
                 self.text_onehot_lists[id] += pad_list
             self.text_onehot_lists = [self.make_onehot(np.array(i)).tolist() for i in self.text_onehot_lists]
 
         return self.word2id_dic, self.id2word_dic, self.text_onehot_lists
 
 
-class One2Text:
+class DataGenerator:
     '''
-    onehotベクトルに対応するテキストを生成するクラス
+    音素ベクトルと対応するテキストのone-hotベクトルを返すgenerator
     '''
-
-    def __init__(self, id2word_dic):
-        self.id2word_dic = id2word_dic
+    def __init__(self):
+        self.reset()
 
     def one2text(self, onehot_vector):
         self.sentence = []
         for row in onehot_vector:
-            self.sentence.append(self.id2word_dic[int((np.where(row==1)[0]))])
+            self.sentence.append(id2word_dic[int((np.where(row==1)[0]))])
         return ''.join(self.sentence)
-
-
-class DataGenerator:
-    '''
-    学習用に音素ベクトルと対応するテキストのone-hotベクトルのバッチ（padding済み）を作るクラス
-    '''
-    def __init__(self):
-        self.reset()
 
     def reset(self):
         self.post_data = []
         self.text_data = []
 
-    def make_data(self, batch_size, directory, text_onehot_lists):
+    def make_data(self, batch_size, directory, text_onehot_lists,stage):
         pr = PostReader()
         while True:
             for path in pathlib.Path(directory).iterdir():
                 id, post_vec = pr.read_data(path)
                 self.post_data.append(post_vec)
                 self.text_data.append(text_onehot_lists[id-1])
-
+                if (stage == 'predict'):
+                    print(self.one2text(np.array(text_onehot_lists[id-1])))
                 if len(self.post_data) == batch_size:
-                    #self.post_max_len = max([len(i) for i in self.post_data])
-                    self.post_max_len = 1450
+                    self.post_max_len = max([len(i) for i in self.post_data])
                     for i, post_vec in enumerate(self.post_data):
                         pad_vec = [[0 for j in range(2000)] for k in range(self.post_max_len-len(post_vec))]
                         self.post_data[i] += pad_vec
-                        print(len(self.post_data[i]))
-                    inputs = np.asarray(self.post_data, dtype=np.float32)
-                    targets = np.asarray(self.text_data, dtype=np.float32)
+                    inputs = np.array(self.post_data, np.float32)
+                    targets = np.array(self.text_data, np.float32)
                     self.reset()
                     yield inputs, targets
 
@@ -130,24 +121,54 @@ if __name__ == '__main__':
     '''
     学習データ準備
     '''
+    data_dir = "./data/" + sys.argv[1]
     ve = VocabExtractor()
-    word2id_dic, id2word_dic, text_onehot_lists = ve.extract("./text/sentences.txt")
+    word2id_dic, id2word_dic, text_onehot_lists = ve.extract(data_dir + "/sentences.txt")
     train_datagen = DataGenerator()
-    train_dir = pathlib.Path('./data/train/')
+    train_dir = pathlib.Path(data_dir + '/train/')
     test_datagen = DataGenerator()
-    test_dir = pathlib.Path('./data/test/')
+    test_dir = pathlib.Path(data_dir + '/test/')
 
+    epochs = 100
+    batch_size = 100
+
+
+    '''
+    テスト時
+    '''
+    if sys.argv[2] == 'test':
+        log_dir = './log/' + sys.argv[3] + '/'
+        model_json = open(log_dir + 'model.json').read()
+        model = model_from_json(model_json)
+        model.load_weights(log_dir + 'weights.hdf5')
+
+        print('Answer')
+        print('='*10)
+
+        # 予測結果を出力
+        prediction_list = (model.predict_generator(
+                   generator=test_datagen.make_data(batch_size,test_dir,text_onehot_lists,'predict'),
+                   steps=int(np.ceil(len(list(test_dir.iterdir())) / batch_size))))
+        
+        print('\nPrediction')
+        print('='*10)
+        for prediction in prediction_list:
+            predict_ids = prediction.argmax(axis=-1)
+            pre = ''.join(id2word_dic[i] for i in predict_ids)
+            print(pre)
+        exit()
+
+
+    '''
+    学習時
+    '''
     # ログデータ保存先
-    log_dir = './log/' + datetime.now().strftime('%Y%m%d_%H%M%S') + '/'
+    log_dir = './log/' + sys.argv[1] + '_' + datetime.now().strftime('%Y%m%d_%H%M%S') + '/'
     graph_dir = log_dir + 'graph/'
     tbcb_dir = log_dir + 'tbcb'
     os.makedirs(graph_dir,exist_ok=True)
     os.makedirs(tbcb_dir,exist_ok=True)
-
-
-    '''
-    モデル設定
-    '''
+    
     n_in = 2000 # 入力次元数
     n_hidden = 128 # 隠れ層の次元数
     n_out = 874 # 出力次元数
@@ -173,39 +194,28 @@ if __name__ == '__main__':
         f.write(model_json)
     plot_model(model, to_file=graph_dir + 'model.png')
 
+
     '''
     モデル学習
     '''
-    epochs = 5
-    batch_size = 20
 
     # コールバック作成
     tbcb = TensorBoard(log_dir=tbcb_dir,histogram_freq=0, write_graph=True)
     csv_logger = CSVLogger(log_dir + 'learn_log.csv', separator=',')
+    early_stop = EarlyStopping()
 
     # 学習開始
-    history = model.fit_generator(generator=train_datagen.make_data(batch_size,train_dir,text_onehot_lists), 
-                        steps_per_epoch=int(np.ceil(len(list(train_dir.iterdir())) / batch_size)),
-                        epochs=epochs,callbacks=[tbcb,csv_logger])
-    '''
-    # 予測結果を出力
-    for i in range(3):
-        index = np.random.randint(0, N_validation)
-        post_vec = X_validation[np.array([index])]
-        text = Y_validation[np.array([index])]
-        prediction = model.predict_classes(post_vec, verbose=0)
+    history = model.fit_generator(
+                   generator=train_datagen.make_data(batch_size,train_dir,text_onehot_lists,'train'), 
+                   steps_per_epoch=int(np.ceil(len(list(train_dir.iterdir())) / batch_size)),
+                   epochs=epochs,
+                   validation_data=test_datagen.make_data(batch_size,test_dir,text_onehot_lists,'test'),
+                   validation_steps=int(np.ceil(len(list(test_dir.iterdir())) / batch_size)),
+                   callbacks=[tbcb,csv_logger,early_stop]
+              )
 
-        post_vec = post_vec.argmax(axis=-1)
-        text = text.argmax(axis=-1)
 
-        ans = ''.join(id2word_dic[i] for i in text[0])
-        pre = ''.join(id2word_dic[i] for i in prediction[0])
 
-        print('-' * 10)
-        print('Answer:  ', ans)
-        print('Predict:  ', pre)
-        print('-' * 10)
-    '''
 
     '''
     学習結果保存処理
