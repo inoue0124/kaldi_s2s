@@ -27,7 +27,7 @@ At first, rewirte the number of data, epoch, batch size (Written in keras_seq2se
 Then, execute a below command,
 
 ```sh
-python keras_seq2seq.py
+python keras_seq2seq.py {data_name}
 ```
 
 A log directory will be made and various files will be created in it.  
@@ -36,6 +36,13 @@ if you want to check a learning history on tensorboard, do the command like
 tensorboard --logdir=./log/{time_stamp}
 ```
 and access here [http://127.0.0.1:6006/](http://127.0.0.1:6006/).  
+
+### Prediction with learned weights
+After learning, you can test the predicition by doing this
+```sh
+python keras_seq2seq.py {data_name} test {log_dir_name}
+```
+Here, log_dir_name has been named when learning phase.
 
 
 ### Reference
