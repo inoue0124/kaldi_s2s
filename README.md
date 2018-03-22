@@ -27,7 +27,7 @@ At first, rewirte the number of data, epoch, batch size (Written in keras_seq2se
 Then, execute a below command,
 
 ```sh
-python keras_seq2seq.py {data_name}
+python keras_seq2seq.py {data_name} train
 ```
 
 A log directory will be made and various files will be created in it.  
