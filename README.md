@@ -20,7 +20,7 @@ cd kaldi_s2s
 ###  Preparation of training data
 It is necessary to place the phoneme posterior vector data in text format in the data directory.  
 Please calculate phoneme posterior by decoding speech files with kaldi.  
-It is assumed that one voice is stored in one file.  
+It is assumed that one utterance is stored in one file.  
 
 ### Run
 At first, rewirte the number of data, epoch, batch size (Written in keras_seq2seq.py)  
@@ -45,7 +45,7 @@ python keras_seq2seq.py {data_name} test {log_dir_name}
 Here, log_dir_name has been named when learning phase.
 
 
-### Reference
+## Reference
 * [Kaldi](https://github.com/kaldi-asr/kaldi)
 * [Seq2seq](https://github.com/udacity/deep-learning/blob/master/seq2seq/sequence_to_sequence_implementation.ipynb)
 * [詳解 ディープラーニング](https://github.com/yusugomori/deeplearning-tensorflow-keras/tree/r1.4)
