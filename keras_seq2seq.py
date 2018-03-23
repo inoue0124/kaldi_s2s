@@ -7,6 +7,8 @@ import pickle
 import jaconv
 import pathlib
 import sys
+import requests
+import json
 from datetime import datetime
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
@@ -15,8 +17,26 @@ from keras.layers.core import Dense, Activation, RepeatVector
 from keras.layers.recurrent import LSTM
 from keras.layers.wrappers import TimeDistributed
 from keras.optimizers import Adam
-from keras.callbacks import TensorBoard,ModelCheckpoint,CSVLogger, EarlyStopping
+from keras.callbacks import TensorBoard,ModelCheckpoint,CSVLogger, EarlyStopping,Callback
 from keras.utils import plot_model
+
+
+
+
+class History_to_slack(Callback):
+    def on_epoch_end(self, epoch, logs={}):
+        text="="*10+"\n" \
+             +"Epoch : "+str(epoch)+"\n" \
+             +"Loss : "+str(logs.get('loss'))+"\n" \
+             +"Acc : "+str(logs.get('acc'))+"\n" \
+             +"Val_loss : "+str(logs.get('val_loss'))+"\n" \
+             +"Val_acc : "+str(logs.get('val_acc'))+"\n" \
+             +"="*10
+        self.print_slack(text)
+
+    def print_slack(self,text):
+        webhook_url = 'https://hooks.slack.com/services/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'
+        requests.post(webhook_url,data=json.dumps({'text': text,'username': 'Keras','icon_emoji': u':ghost:','link_names': 1,}))
 
 
 class PostReader:
@@ -134,13 +154,20 @@ if __name__ == '__main__':
     test_datagen = DataGenerator()
     test_dir = pathlib.Path(data_dir + '/test/')
 
-    epochs = 100
-    batch_size = 1
+    epochs = 200
+    batch_size = 512
 
-    print("教師データ数： {}".format(len(list(train_dir.iterdir()))))
-    print("テストデータ数： {}".format(len(list(test_dir.iterdir()))))
-    print("エポック数：{}".format(epochs))
-    print("バッチサイズ：{}".format(batch_size))
+    conf_info ="="*10+"\n" \
+               +"学習開始日時："+datetime.now().strftime('%Y年%m月%d日%H時%M分%S秒')+"\n" \
+               +"教師データ数："+str(len(list(train_dir.iterdir())))+"\n" \
+               +"テストデータ数： "+str(len(list(test_dir.iterdir())))+"\n" \
+               +"エポック数："+str(epochs)+"\n" \
+               +"バッチサイズ："+str(batch_size)+"\n" \
+               +"="*10
+
+    print(conf_info)
+    history_to_slack = History_to_slack()
+    history_to_slack.print_slack(conf_info)
 
 
     '''
@@ -216,7 +243,8 @@ if __name__ == '__main__':
     checkpoint = ModelCheckpoint(filepath = weight_dir + 'epoch{epoch:03d}-loss{loss:.2f}-acc{acc:.2f}-vloss{val_loss:.2f}-vacc{val_acc:.2f}.hdf5', 
                                                  monitor='val_loss', verbose=1, save_best_only=False, mode='auto')
     csv_logger = CSVLogger(log_dir + 'learn_log.csv', separator=',')
-    early_stop = EarlyStopping()
+    early_stop = EarlyStopping(patience=20)
+
 
     # 学習開始
     history = model.fit_generator(
@@ -225,7 +253,7 @@ if __name__ == '__main__':
                    epochs=epochs,
                    validation_data=test_datagen.make_data(batch_size,test_dir,text_onehot_lists,'test'),
                    validation_steps=int(np.ceil(len(list(test_dir.iterdir())) / batch_size)),
-                   callbacks=[tensorboard,checkpoint,csv_logger,early_stop]
+                   callbacks=[tensorboard,checkpoint,csv_logger,early_stop,history_to_slack]
               )
 
 
@@ -241,3 +269,8 @@ if __name__ == '__main__':
     # 学習履歴を保存する
     with open(log_dir + "history.pickle", mode='wb') as f:
         pickle.dump(history.history, f)
+    
+    end_text="="*10+"\n" \
+             +"学習終了日時："+datetime.now().strftime('%Y年%m月%d日%H時%M分%S秒')+"\n" \
+             +"="*10
+    history_to_slack.print_slack(end_text)

@@ -103,3 +103,4 @@ ENV/
 data/
 .DS_Store
 log/
+nohup.out
