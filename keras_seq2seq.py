@@ -15,7 +15,7 @@ from keras.layers.core import Dense, Activation, RepeatVector
 from keras.layers.recurrent import LSTM
 from keras.layers.wrappers import TimeDistributed
 from keras.optimizers import Adam
-from keras.callbacks import TensorBoard, CSVLogger, EarlyStopping
+from keras.callbacks import TensorBoard,ModelCheckpoint,CSVLogger, EarlyStopping
 from keras.utils import plot_model
 
 
@@ -110,8 +110,13 @@ class DataGenerator:
                     for i, post_vec in enumerate(self.post_data):
                         pad_vec = [[0 for j in range(2000)] for k in range(self.post_max_len-len(post_vec))]
                         self.post_data[i] += pad_vec
-                    inputs = np.array(self.post_data, np.float32)
-                    targets = np.array(self.text_data, np.float32)
+                    try:
+                        inputs = np.array(self.post_data, np.float32)
+                        targets = np.array(self.text_data, np.float32)
+                    except:
+                        print(path)
+                        import traceback
+                        traceback.print_exc()
                     self.reset()
                     yield inputs, targets
 
@@ -130,7 +135,12 @@ if __name__ == '__main__':
     test_dir = pathlib.Path(data_dir + '/test/')
 
     epochs = 100
-    batch_size = 100
+    batch_size = 1
+
+    print("教師データ数： {}".format(len(list(train_dir.iterdir()))))
+    print("テストデータ数： {}".format(len(list(test_dir.iterdir()))))
+    print("エポック数：{}".format(epochs))
+    print("バッチサイズ：{}".format(batch_size))
 
 
     '''
@@ -165,9 +175,11 @@ if __name__ == '__main__':
     # ログデータ保存先
     log_dir = './log/' + sys.argv[1] + '_' + datetime.now().strftime('%Y%m%d_%H%M%S') + '/'
     graph_dir = log_dir + 'graph/'
-    tbcb_dir = log_dir + 'tbcb'
+    tensorboard_dir = log_dir + 'tensorboard'
+    weight_dir = log_dir + 'weight/'
     os.makedirs(graph_dir,exist_ok=True)
-    os.makedirs(tbcb_dir,exist_ok=True)
+    os.makedirs(tensorboard_dir,exist_ok=True)
+    os.makedirs(weight_dir,exist_ok=True)
     
     n_in = 2000 # 入力次元数
     n_hidden = 128 # 隠れ層の次元数
@@ -200,7 +212,9 @@ if __name__ == '__main__':
     '''
 
     # コールバック作成
-    tbcb = TensorBoard(log_dir=tbcb_dir,histogram_freq=0, write_graph=True)
+    tensorboard = TensorBoard(log_dir=tensorboard_dir,histogram_freq=0, write_graph=True)
+    checkpoint = ModelCheckpoint(filepath = weight_dir + 'epoch{epoch:03d}-loss{loss:.2f}-acc{acc:.2f}-vloss{val_loss:.2f}-vacc{val_acc:.2f}.hdf5', 
+                                                 monitor='val_loss', verbose=1, save_best_only=False, mode='auto')
     csv_logger = CSVLogger(log_dir + 'learn_log.csv', separator=',')
     early_stop = EarlyStopping()
 
@@ -211,7 +225,7 @@ if __name__ == '__main__':
                    epochs=epochs,
                    validation_data=test_datagen.make_data(batch_size,test_dir,text_onehot_lists,'test'),
                    validation_steps=int(np.ceil(len(list(test_dir.iterdir())) / batch_size)),
-                   callbacks=[tbcb,csv_logger,early_stop]
+                   callbacks=[tensorboard,checkpoint,csv_logger,early_stop]
               )
 
 
