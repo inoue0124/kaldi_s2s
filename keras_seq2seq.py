@@ -154,11 +154,13 @@ if __name__ == '__main__':
     test_datagen = DataGenerator()
     test_dir = pathlib.Path(data_dir + '/test/')
 
-    epochs = 200
-    batch_size = 512
+    epochs = 5
+    batch_size = 1
 
     conf_info ="="*10+"\n" \
                +"学習開始日時："+datetime.now().strftime('%Y年%m月%d日%H時%M分%S秒')+"\n" \
+               +"="*10+"\n" \
+               +"="*10+"\n" \
                +"教師データ数："+str(len(list(train_dir.iterdir())))+"\n" \
                +"テストデータ数： "+str(len(list(test_dir.iterdir())))+"\n" \
                +"エポック数："+str(epochs)+"\n" \
