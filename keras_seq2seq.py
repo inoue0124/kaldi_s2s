@@ -16,6 +16,7 @@ from keras.models import Sequential,model_from_json
 from keras.layers.core import Dense, Activation, RepeatVector
 from keras.layers.recurrent import LSTM
 from keras.layers.wrappers import TimeDistributed
+from keras.layers.normalization import BatchNormalization
 from keras.optimizers import Adam
 from keras.callbacks import TensorBoard,ModelCheckpoint,CSVLogger, EarlyStopping,Callback
 from keras.utils import plot_model
@@ -24,14 +25,26 @@ from keras.utils import plot_model
 
 
 class History_to_slack(Callback):
+    '''
+    学習状況をスラックに投稿するクラス
+    '''
+
+
+    def __init__(self,train_step):
+        self.train_step = train_step
+
     def on_epoch_end(self, epoch, logs={}):
         text="="*10+"\n" \
-             +"Epoch : "+str(epoch)+"\n" \
+             +"Epoch : "+str(epoch+1)+"/200\n" \
              +"Loss : "+str(logs.get('loss'))+"\n" \
              +"Acc : "+str(logs.get('acc'))+"\n" \
              +"Val_loss : "+str(logs.get('val_loss'))+"\n" \
              +"Val_acc : "+str(logs.get('val_acc'))+"\n" \
              +"="*10
+        self.print_slack(text)
+
+    def on_batch_end(self,batch,logs={}):
+        text="Batch : "+str(batch+1)+"/"+str(self.train_step)+"\n"
         self.print_slack(text)
 
     def print_slack(self,text):
@@ -154,8 +167,8 @@ if __name__ == '__main__':
     test_datagen = DataGenerator()
     test_dir = pathlib.Path(data_dir + '/test/')
 
-    epochs = 5
-    batch_size = 1
+    epochs = 200
+    batch_size = 64
 
     conf_info ="="*10+"\n" \
                +"学習開始日時："+datetime.now().strftime('%Y年%m月%d日%H時%M分%S秒')+"\n" \
@@ -168,7 +181,7 @@ if __name__ == '__main__':
                +"="*10
 
     print(conf_info)
-    history_to_slack = History_to_slack()
+    history_to_slack = History_to_slack(int(np.ceil(len(list(train_dir.iterdir())) / batch_size)))
     history_to_slack.print_slack(conf_info)
 
 
@@ -176,10 +189,11 @@ if __name__ == '__main__':
     テスト時
     '''
     if sys.argv[2] == 'test':
-        log_dir = './log/' + sys.argv[3] + '/'
+        log_dir = sys.argv[3] + '/'
         model_json = open(log_dir + 'model.json').read()
         model = model_from_json(model_json)
-        model.load_weights(log_dir + 'weights.hdf5')
+        weight_dir = pathlib.Path(log_dir + 'weight/')
+        model.load_weights(list(weight_dir.iterdir())[-1])
 
         print('Answer')
         print('='*10)
@@ -217,7 +231,8 @@ if __name__ == '__main__':
     model = Sequential()
 
     # Encoder
-    model.add(LSTM(n_hidden, input_shape=(None, n_in)))
+    model.add(BatchNormalization(input_shape=(None,n_in)))
+    model.add(LSTM(n_hidden))
 
     # Decoder
     model.add(RepeatVector(ve.text_max_len))
