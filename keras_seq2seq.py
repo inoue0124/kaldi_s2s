@@ -9,15 +9,21 @@ import pathlib
 import sys
 import requests
 import json
+import random
+from attention_decoder import AttentionDecoder
 from datetime import datetime
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
-from keras.models import Sequential,model_from_json
-from keras.layers.core import Dense, Activation, RepeatVector
-from keras.layers.recurrent import LSTM
-from keras.layers.wrappers import TimeDistributed
+from keras import backend as K
+from keras.activations import softmax
+from keras.models import Sequential,model_from_json,Model
+from keras.layers import Multiply, multiply, Lambda, Concatenate
+from keras.layers.core import Flatten, Dense, Activation, RepeatVector, Permute
+from keras.engine.topology import Input
+from keras.layers.recurrent import LSTM, GRU
+from keras.layers.wrappers import Bidirectional, TimeDistributed
 from keras.layers.normalization import BatchNormalization
-from keras.optimizers import Adam
+from keras.optimizers import Adam,SGD
 from keras.callbacks import TensorBoard,ModelCheckpoint,CSVLogger, EarlyStopping,Callback
 from keras.utils import plot_model
 
@@ -26,7 +32,7 @@ from keras.utils import plot_model
 
 class History_to_slack(Callback):
     '''
-    学習状況をスラックに投稿するクラス
+    学習状況をslackに投稿するクラス
     '''
 
 
@@ -132,20 +138,24 @@ class DataGenerator:
     def make_data(self, batch_size, directory, text_onehot_lists,stage):
         pr = PostReader()
         while True:
-            for path in pathlib.Path(directory).iterdir():
+            files = [x for x in pathlib.Path(directory).iterdir()]
+            random.shuffle(files)
+            for path in files:
                 id, post_vec = pr.read_data(path)
                 self.post_data.append(post_vec)
                 self.text_data.append(text_onehot_lists[id-1])
                 if (stage == 'predict'):
                     print(self.one2text(np.array(text_onehot_lists[id-1])))
                 if len(self.post_data) == batch_size:
-                    self.post_max_len = max([len(i) for i in self.post_data])
+                    #self.post_max_len = max([len(i) for i in self.post_data])
+                    self.post_max_len = 1500
                     for i, post_vec in enumerate(self.post_data):
                         pad_vec = [[0 for j in range(2000)] for k in range(self.post_max_len-len(post_vec))]
                         self.post_data[i] += pad_vec
                     try:
                         inputs = np.array(self.post_data, np.float32)
                         targets = np.array(self.text_data, np.float32)
+                        #inputs,targets = shuffle(inputs,targets)
                     except:
                         print(path)
                         import traceback
@@ -166,6 +176,8 @@ if __name__ == '__main__':
     train_dir = pathlib.Path(data_dir + '/train/')
     test_datagen = DataGenerator()
     test_dir = pathlib.Path(data_dir + '/test/')
+    #from IPython import embed
+    #embed()
 
     epochs = 200
     batch_size = 64
@@ -225,13 +237,16 @@ if __name__ == '__main__':
     os.makedirs(weight_dir,exist_ok=True)
     
     n_in = 2000 # 入力次元数
-    n_hidden = 128 # 隠れ層の次元数
+    n_hidden = 256 # 隠れ層の次元数
     n_out = 874 # 出力次元数
 
+
+    #元々のモデル
+    """
     model = Sequential()
 
     # Encoder
-    model.add(BatchNormalization(input_shape=(None,n_in)))
+    model.add(BatchNormalization(input_shape=(1500,n_in)))
     model.add(LSTM(n_hidden))
 
     # Decoder
@@ -241,8 +256,48 @@ if __name__ == '__main__':
     model.add(TimeDistributed(Dense(n_out)))
     model.add(Activation('softmax'))
     model.compile(loss='categorical_crossentropy',
+                  #optimizer=SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True),
                   optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
                   metrics=['accuracy'])
+    """
+
+
+    #Attention1（https://github.com/GINK03/keras-seq2seq）
+    """
+    inputs      = Input(shape=(1500, n_in))
+    encoded     = LSTM(n_hidden)(inputs)
+
+    inputs_a    = inputs
+    inputs_a	= BatchNormalization()(inputs_a)
+    a_vector    = Dense(n_hidden, activation='softmax')(Flatten()(inputs_a))
+    mul         = multiply([encoded, a_vector]) 
+    encoder     = Model(inputs, mul)
+
+    x           = RepeatVector(ve.text_max_len)(mul)
+    x           = Bidirectional(LSTM(n_hidden, return_sequences=True))(x)
+    decoded     = TimeDistributed(Dense(n_out, activation='softmax'))(x)
+
+    model = Model(inputs, decoded)
+    model.compile(optimizer=Adam(), loss='categorical_crossentropy')
+    """
+
+
+    #Attention2（https://machinelearningmastery.com/encoder-decoder-attention-sequence-to-sequence-prediction-keras/）
+    model = Sequential()
+
+    # Encoder
+    model.add(BatchNormalization(input_shape=(1500,n_in)))
+    model.add(LSTM(n_hidden,return_sequences=False))
+
+    # Decoder
+    model.add(RepeatVector(ve.text_max_len))
+    model.add(AttentionDecoder(n_hidden,n_out))
+    model.compile(loss='categorical_crossentropy',
+                  #optimizer=SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True),
+                  optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
+                  metrics=['accuracy'])
+
+  
 
     #　モデルを保存する
     model_json = model.to_json()
