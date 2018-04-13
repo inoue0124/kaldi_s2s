@@ -53,8 +53,7 @@ class History_to_slack(Callback):
         text="Batch : "+str(batch+1)+"/"+str(self.train_step)+"\n"
         self.print_slack(text)
 
-    def print_slack(self,text):
-        webhook_url = 'https://hooks.slack.com/services/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'
+    def print_slack(self,text,webhook_url):
         requests.post(webhook_url,data=json.dumps({'text': text,'username': 'Keras','icon_emoji': u':ghost:','link_names': 1,}))
 
 
@@ -193,8 +192,9 @@ if __name__ == '__main__':
                +"="*10
 
     print(conf_info)
+    webhook_url = open("./webhook").read()
     history_to_slack = History_to_slack(int(np.ceil(len(list(train_dir.iterdir())) / batch_size)))
-    history_to_slack.print_slack(conf_info)
+    history_to_slack.print_slack(conf_info,webhook_url)
 
 
     '''
@@ -345,4 +345,4 @@ if __name__ == '__main__':
     end_text="="*10+"\n" \
              +"学習終了日時："+datetime.now().strftime('%Y年%m月%d日%H時%M分%S秒')+"\n" \
              +"="*10
-    history_to_slack.print_slack(end_text)
+    history_to_slack.print_slack(end_text,webhook_url)
