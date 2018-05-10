@@ -14,7 +14,9 @@ from attention_decoder import AttentionDecoder
 from datetime import datetime
 from sklearn.model_selection import train_test_split
 from sklearn.utils import shuffle
+import tensorflow as tf
 from keras import backend as K
+K.tensorflow_backend.set_session(tf.Session(config=tf.ConfigProto(device_count = {'GPU': 0})))
 from keras.activations import softmax
 from keras.models import Sequential,model_from_json,Model
 from keras.layers import Multiply, multiply, Lambda, Concatenate
@@ -28,6 +30,12 @@ from keras.callbacks import TensorBoard,ModelCheckpoint,CSVLogger, EarlyStopping
 from keras.utils import plot_model
 
 
+class MyCheckpoint(Callback):
+    def __init__(self, model):
+        self.model_to_save = model
+
+    def on_epoch_end(self, epoch, logs=None):
+        self.model_to_save.save(weight_dir +'model_at_epoch_%d.h5' % epoch)
 
 
 class History_to_slack(Callback):
@@ -47,11 +55,26 @@ class History_to_slack(Callback):
              +"Val_loss : "+str(logs.get('val_loss'))+"\n" \
              +"Val_acc : "+str(logs.get('val_acc'))+"\n" \
              +"="*10
-        self.print_slack(text)
+        self.print_slack(text,webhook_url)
+
+        val_dir = pathlib.Path(data_dir + '/val/')
+
+        prediction_list = model.predict_generator(
+                   generator=test_datagen.make_data(batch_size,val_dir,text_onehot_lists,'predict'),
+                   steps=int(np.ceil(len(list(val_dir.iterdir())) / batch_size)))
+
+        print('\nPrediction')
+        print('='*10)
+        for prediction in prediction_list:
+            predict_ids = prediction.argmax(axis=-1)
+            pre = ''.join(id2word_dic[i] for i in predict_ids)
+            print(pre)
+        
 
     def on_batch_end(self,batch,logs={}):
         text="Batch : "+str(batch+1)+"/"+str(self.train_step)+"\n"
-        self.print_slack(text)
+        #self.print_slack(text,webhook_url)
+
 
     def print_slack(self,text,webhook_url):
         requests.post(webhook_url,data=json.dumps({'text': text,'username': 'Keras','icon_emoji': u':ghost:','link_names': 1,}))
@@ -123,6 +146,7 @@ class DataGenerator:
     '''
     def __init__(self):
         self.reset()
+        self.answer=[]
 
     def one2text(self, onehot_vector):
         self.sentence = []
@@ -142,17 +166,23 @@ class DataGenerator:
             for path in files:
                 id, post_vec = pr.read_data(path)
                 self.post_data.append(post_vec)
+                #id=random.randint(1,200)
                 self.text_data.append(text_onehot_lists[id-1])
                 if (stage == 'predict'):
-                    print(self.one2text(np.array(text_onehot_lists[id-1])))
-                if len(self.post_data) == batch_size:
-                    #self.post_max_len = max([len(i) for i in self.post_data])
-                    self.post_max_len = 1500
+                    self.answer.append(self.one2text(np.array(text_onehot_lists[id-1])))
+                    pass
+                    #print(self.one2text(np.array(text_onehot_lists[id-1])))
+                if len(self.text_data) == batch_size:
+                    self.post_max_len = max([len(i) for i in self.post_data])
+                    #self.post_max_len = 1500
                     for i, post_vec in enumerate(self.post_data):
                         pad_vec = [[0 for j in range(2000)] for k in range(self.post_max_len-len(post_vec))]
                         self.post_data[i] += pad_vec
+                        self.post_data[i] = self.post_data[i]
                     try:
                         inputs = np.array(self.post_data, np.float32)
+                        inputs = inputs[:,1::2,:]
+                        inputs = inputs[:,1::2,:]
                         targets = np.array(self.text_data, np.float32)
                         #inputs,targets = shuffle(inputs,targets)
                     except:
@@ -160,6 +190,9 @@ class DataGenerator:
                         import traceback
                         traceback.print_exc()
                     self.reset()
+                    #print(path)
+                    #print(inputs,self.one2text(np.array(targets[0])))
+                    #inputs=targets
                     yield inputs, targets
 
 
@@ -171,6 +204,7 @@ if __name__ == '__main__':
     data_dir = "./data/" + sys.argv[1]
     ve = VocabExtractor()
     word2id_dic, id2word_dic, text_onehot_lists = ve.extract(data_dir + "/sentences.txt")
+    #word2id_dic, id2word_dic, text_onehot_lists = ve.extract(data_dir + "/test.txt")
     train_datagen = DataGenerator()
     train_dir = pathlib.Path(data_dir + '/train/')
     test_datagen = DataGenerator()
@@ -179,7 +213,7 @@ if __name__ == '__main__':
     #embed()
 
     epochs = 200
-    batch_size = 64
+    batch_size = 16
 
     conf_info ="="*10+"\n" \
                +"学習開始日時："+datetime.now().strftime('%Y年%m月%d日%H時%M分%S秒')+"\n" \
@@ -196,31 +230,59 @@ if __name__ == '__main__':
     history_to_slack = History_to_slack(int(np.ceil(len(list(train_dir.iterdir())) / batch_size)))
     history_to_slack.print_slack(conf_info,webhook_url)
 
+    n_in = 2000 # 入力次元数
+    n_hidden = 256 # 隠れ層の次元数
+    n_out = 874 # 出力次元数
+    #n_out = 2400
+    in_seq=ve.text_max_len
+    #in_seq=375
+    #in_seq=848
+    print(ve.text_max_len)
+
 
     '''
     テスト時
     '''
     if sys.argv[2] == 'test':
+
+        #Attention2（https://machinelearningmastery.com/encoder-decoder-attention-sequence-to-sequence-prediction-keras/）
+    
+        model = Sequential()
+
+        # Encoder
+        model.add(BatchNormalization(input_shape=(in_seq,n_out)))
+        model.add(LSTM(n_hidden,return_sequences=False))
+
+        # Decoder
+        model.add(RepeatVector(ve.text_max_len))
+        model.add(AttentionDecoder(n_hidden,n_out))
+        model.compile(loss='categorical_crossentropy',
+                      #optimizer=SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True),
+                      optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
+                      metrics=['accuracy'])
+ 
         log_dir = sys.argv[3] + '/'
         model_json = open(log_dir + 'model.json').read()
         model = model_from_json(model_json)
         weight_dir = pathlib.Path(log_dir + 'weight/')
         model.load_weights(list(weight_dir.iterdir())[-1])
+        val_dir = pathlib.Path(data_dir + '/val/')
 
         print('Answer')
         print('='*10)
 
         # 予測結果を出力
         prediction_list = (model.predict_generator(
-                   generator=test_datagen.make_data(batch_size,test_dir,text_onehot_lists,'predict'),
-                   steps=int(np.ceil(len(list(test_dir.iterdir())) / batch_size))))
+                   generator=test_datagen.make_data(batch_size,val_dir,text_onehot_lists,'predict'),
+                   steps=int(np.ceil(len(list(val_dir.iterdir())) / batch_size))))
         
         print('\nPrediction')
         print('='*10)
-        for prediction in prediction_list:
-            predict_ids = prediction.argmax(axis=-1)
+        for answer,prediction in zip(test_datagen.answer,prediction_list):
+            predict_ids = prediction.argmax(axis=1)
+            #print(predict_ids)   
             pre = ''.join(id2word_dic[i] for i in predict_ids)
-            print(pre)
+            print(answer+' --> '+pre)
         exit()
 
 
@@ -236,17 +298,14 @@ if __name__ == '__main__':
     os.makedirs(tensorboard_dir,exist_ok=True)
     os.makedirs(weight_dir,exist_ok=True)
     
-    n_in = 2000 # 入力次元数
-    n_hidden = 256 # 隠れ層の次元数
-    n_out = 874 # 出力次元数
-
 
     #元々のモデル
-    """
+    
+    
     model = Sequential()
 
     # Encoder
-    model.add(BatchNormalization(input_shape=(1500,n_in)))
+    model.add(BatchNormalization(input_shape=(None,n_in)))
     model.add(LSTM(n_hidden))
 
     # Decoder
@@ -259,7 +318,7 @@ if __name__ == '__main__':
                   #optimizer=SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True),
                   optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
                   metrics=['accuracy'])
-    """
+    
 
 
     #Attention1（https://github.com/GINK03/keras-seq2seq）
@@ -281,12 +340,13 @@ if __name__ == '__main__':
     model.compile(optimizer=Adam(), loss='categorical_crossentropy')
     """
 
-
+    
     #Attention2（https://machinelearningmastery.com/encoder-decoder-attention-sequence-to-sequence-prediction-keras/）
+    """
     model = Sequential()
 
     # Encoder
-    model.add(BatchNormalization(input_shape=(1500,n_in)))
+    model.add(BatchNormalization(input_shape=(in_seq,n_in)))
     model.add(LSTM(n_hidden,return_sequences=False))
 
     # Decoder
@@ -296,8 +356,8 @@ if __name__ == '__main__':
                   #optimizer=SGD(lr=0.01, decay=1e-6, momentum=0.9, nesterov=True),
                   optimizer=Adam(lr=0.001, beta_1=0.9, beta_2=0.999),
                   metrics=['accuracy'])
-
-  
+    
+    """
 
     #　モデルを保存する
     model_json = model.to_json()
@@ -312,8 +372,9 @@ if __name__ == '__main__':
 
     # コールバック作成
     tensorboard = TensorBoard(log_dir=tensorboard_dir,histogram_freq=0, write_graph=True)
-    checkpoint = ModelCheckpoint(filepath = weight_dir + 'epoch{epoch:03d}-loss{loss:.2f}-acc{acc:.2f}-vloss{val_loss:.2f}-vacc{val_acc:.2f}.hdf5', 
-                                                 monitor='val_loss', verbose=1, save_best_only=False, mode='auto')
+    #checkpoint = ModelCheckpoint(filepath = weight_dir + 'epoch{epoch:03d}-loss{loss:.2f}-acc{acc:.2f}-vloss{val_loss:.2f}-vacc{val_acc:.2f}.hdf5', 
+    #                                             monitor='val_loss', verbose=1, save_best_only=False, mode='auto')
+    checkpoint = MyCheckpoint(model)
     csv_logger = CSVLogger(log_dir + 'learn_log.csv', separator=',')
     early_stop = EarlyStopping(patience=20)
 
